@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { fetchStudents, createStudent, updateStudent } from './api/studentApi';
+import { fetchStudents, createStudent, updateStudent, deleteStudent, fetchStudent } from './api/studentApi';
 import StudentTable from './components/StudentTable';
 import StudentForm from './components/StudentForm';
-import { EMPTY_FORM, toRequest } from './lib/studentData';
+import { EMPTY_FORM, toFormValues, toRequest } from './lib/studentData';
 import { validateStudent } from './lib/validation';
+import { APP_MODE } from "./config.js";
 
 import './style.css'
 
@@ -22,6 +23,18 @@ function App() {
 
   // 수정 모드인지는 editingId 로 알 수 있으므로 따로 state 를 두지 않는다.
   const isEditing = editingId !== null;
+
+  /* useRef 는 화면에 그려진 실제 요소를 붙잡아 두는 자리다.
+   state 와 달리 값이 바뀌어도 화면을 다시 그리지 않는다.
+   수정 버튼을 눌렀을 때 폼으로 스크롤하는 데만 쓴다. */
+  const formRef = useRef(null);
+
+  // 제목 옆에 붙일 배지의 class. 운영이면 빨강, 아니면 회색.
+  let modeClass = "app-mode test";
+  if (APP_MODE === "PROD") {
+    modeClass = "app-mode prod";
+  }
+
 
   async function loadStudents() {
     setLoading(true);
@@ -74,12 +87,47 @@ function App() {
   }, [message]);
 
 
-  function handleEdit() {
+  async function handleEdit(studentId) {
+    setMessage(null);            // 앞선 메시지를 지운다
 
+    try {
+      const student = await fetchStudent(studentId);
+
+      // 4부에서는 fillForm 이 input.value 에 하나씩 넣었다.
+      // 여기서는 state 만 바꾸면 입력칸이 따라서 바뀐다.
+      setForm(toFormValues(student));
+      setEditingId(studentId);
+
+      // formRef.current 는 화면에 그려진 form-container 요소다.
+      // 아직 안 그려졌을 수도 있으므로 먼저 확인한다.
+      if (formRef.current) {
+        formRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      setMessage({ text: error.message, type: "error" });
+    }
   }//handleEdit
 
-  function handleDelete() {
+  async function handleDelete(studentId) {
+    if (!confirm("정말로 이 학생을 삭제하시겠습니까?")) {
+      return;
+    }
 
+    try {
+      await deleteStudent(studentId);
+      setMessage({ text: "학생이 성공적으로 삭제되었습니다.", type: "success" });
+
+      // 수정 중이던 학생을 삭제했다면 폼도 등록 모드로 되돌린다.
+      if (editingId === studentId) {
+        resetForm();
+      }
+
+      await loadStudents();
+    } catch (error) {
+      console.error("Error:", error);
+      setMessage({ text: error.message, type: "error" });
+    }
   }//handleDelete
 
   function handleChange(event) {
@@ -148,7 +196,7 @@ function App() {
 
   return (
     <>
-      <h1>학생 관리 시스템</h1>
+      <h1>학생 관리 시스템<span className={modeClass}>{APP_MODE}</span></h1>
 
       <StudentForm
         form={form}
@@ -157,6 +205,7 @@ function App() {
         onChange={handleChange}
         onSubmit={handleSubmit}
         onCancel={resetForm}
+        containerRef={formRef}
       />
 
       <StudentTable
