@@ -111,7 +111,6 @@ function StudentForm({
                         />
                     </div>
 
-                    {/* 생년월일만 required 가 없다. 비워 두어도 된다. */}
                     <div className="form-group">
                         <label htmlFor="dateOfBirth">생년월일:</label>
                         <input

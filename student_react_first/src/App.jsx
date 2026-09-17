@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 
-import { fetchStudents } from './api/studentApi';
+import { fetchStudents, createStudent, updateStudent } from './api/studentApi';
 import StudentTable from './components/StudentTable';
-import { EMPTY_FORM } from './lib/studentData';
+import StudentForm from './components/StudentForm';
+import { EMPTY_FORM, toRequest } from './lib/studentData';
+import { validateStudent } from './lib/validation';
 
 import './style.css'
+
+const MESSAGE_TIMEOUT = 3000;
 
 function App() {
   //상태 변수 선언
@@ -46,6 +50,30 @@ function App() {
     loadStudents();
   }, []);
 
+  /* -----------------------------------------------------
+       성공 메시지는 3초 뒤에 저절로 사라진다
+       4부에서 messageTimer 변수를 두고 clearTimeout 을 부르던 일을
+       useEffect 가 대신한다. return 으로 돌려준 함수를 정리 함수라고
+       하는데, 메시지가 바뀌기 직전에 React 가 이것을 먼저 불러 준다.
+       그래서 이전 예약이 새 메시지를 지워 버리는 일이 없다.
+    ----------------------------------------------------- */
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+
+    // 오류 메시지는 사용자가 고칠 때까지 남겨 둔다.
+    if (message.type !== "success") {
+      return;
+    }
+
+    const timer = setTimeout(() => setMessage(null), MESSAGE_TIMEOUT);
+
+    // 정리(clean up) 함수 — 다음 번 실행 직전과 화면에서 사라질 때 불린다.
+    return () => clearTimeout(timer);
+  }, [message]);
+
+
   function handleEdit() {
 
   }//handleEdit
@@ -63,7 +91,7 @@ function App() {
 
     // 기존 값을 그대로 복사한 새 객체를 만든다.
     const next = { ...form };
-    console.log('next :' + next)
+    console.log(next)
 
     // 바뀐 칸 하나만 덮어쓴다.
     // next.name 이 아니라 next[name] 인 이유는
@@ -74,14 +102,46 @@ function App() {
   }//handleChange
 
   // 실습 5-8 에서 속을 채운다.
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     // 이 한 줄은 지금 넣어야 한다. 없으면 제출할 때마다
     // 브라우저가 페이지를 새로 불러와 입력한 값이 날아간다.
     event.preventDefault();
+
+    setMessage(null);            // 앞선 메시지를 지운다
+
+    const studentData = toRequest(form);
+
+    // 검사에 걸리면 메시지만 보여 주고 끝낸다.
+    const errorMessage = validateStudent(studentData);
+    if (errorMessage) {
+      setMessage({ text: errorMessage, type: "error" });
+      return;
+    }
+
+    try {
+      if (isEditing) {
+        await updateStudent(editingId, studentData);
+        setMessage({ text: "학생 정보가 성공적으로 수정되었습니다.", type: "success" });
+      } else {
+        await createStudent(studentData);
+        setMessage({ text: "학생이 성공적으로 등록되었습니다.", type: "success" });
+      }
+
+      resetForm();
+      await loadStudents();         // 목록 새로고침
+    } catch (error) {
+      console.error("Error:", error);
+      setMessage({ text: error.message, type: "error" });   // 서버가 보낸 실제 메시지
+    }
+
+
   }//handleSubmit
 
   // 실습 5-9 에서 속을 채운다.
   function resetForm() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+
   }//resetForm
 
 
@@ -89,6 +149,15 @@ function App() {
   return (
     <>
       <h1>학생 관리 시스템</h1>
+
+      <StudentForm
+        form={form}
+        isEditing={isEditing}
+        message={message}
+        onChange={handleChange}
+        onSubmit={handleSubmit}
+        onCancel={resetForm}
+      />
 
       <StudentTable
         students={students}
